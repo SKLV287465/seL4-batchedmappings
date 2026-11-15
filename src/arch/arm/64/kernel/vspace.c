@@ -1251,6 +1251,27 @@ static void doFlush(word_t invLabel, vptr_t start, vptr_t end, paddr_t pstart)
 
 /* ================= INVOCATION HANDLING STARTS HERE ================== */
 
+static exception_t performVSpaceBatchedMap(vspace_root_t *vspaceRoot, asid_t asid,
+                                                  seL4_CapRights_t rights,
+                                                  vm_attributes_t attributes, word_t count, word_t *buffer) 
+{
+    word_t offset = 3;
+    for (word_t i = 0; i < count; ++i) {
+        cptr_t frameCptr = getSyscallArg(offset + 2 * i, buffer);
+        vptr_t vaddr = getSyscallArg(offset + 2 * i + 1, buffer);
+        // do the mapping
+    }
+}
+
+static exception_t performVSpaceBatchedUnmap(asid_t asid, word_t count, word_t *buffer) 
+{
+    word_t offset = 1;
+    for (word_t i = 0; i < count; ++i) {
+        cptr_t frameCptr = getSyscallArg(offset + i, buffer);
+        // do the unmapping
+    }
+}
+
 static exception_t performVSpaceFlush(word_t invLabel, vspace_root_t *vspaceRoot, asid_t asid,
                                       vptr_t start, vptr_t end, paddr_t pstart)
 {
@@ -1521,7 +1542,23 @@ static exception_t decodeARMVSpaceRootInvocation(word_t invLabel, word_t length,
 
         setThreadState(NODE_STATE(ksCurThread), ThreadState_Restart);
         return performVSpaceFlush(invLabel, vspaceRoot, asid, start, end - 1, pstart);
-
+    
+    case ARMVSpaceMapBatched:
+    case ARMVSpaceUnmapBatched:
+        // TODO: do some exception handling.
+        
+        word_t count = getSyscallArg(0, buffer);
+        vspaceRoot = VSPACE_PTR(cap_vspace_cap_get_capVSBasePtr(cap));
+        asid = cap_vspace_cap_get_capVSMappedASID(cap);
+        
+        if (invLabel == ARMVSpaceMapBatched) {
+            seL4_CapRights_t rights = rightsFromWord(getSyscallArg(1, buffer));
+            vm_attributes_t attributes = vmAttributesFromWord(getSyscallArg(2, buffer));
+            return performVSpaceBatchedMap(vspaceRoot, asid, rights, attributes, count, buffer);
+        } else{
+            return performVSpaceBatchedUnmap(asid, count, buffer);
+        }
+    
     default:
         current_syscall_error.type = seL4_IllegalOperation;
         return EXCEPTION_SYSCALL_ERROR;
