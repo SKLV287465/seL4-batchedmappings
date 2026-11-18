@@ -1251,19 +1251,42 @@ static void doFlush(word_t invLabel, vptr_t start, vptr_t end, paddr_t pstart)
 
 /* ================= INVOCATION HANDLING STARTS HERE ================== */
 
+// TODO: this should not be a catastrophic error...
+// TODO: figure out how to do error checking, for now I will just assume Intermediate structures exist.
 static exception_t performVSpaceBatchedMap(vspace_root_t *vspaceRoot, asid_t asid,
                                                   seL4_CapRights_t rights,
-                                                  vm_attributes_t attributes, word_t count, word_t *buffer) 
+                                                  vm_attributes_t attributes, word_t count, word_t *buffer, cte_t *ctSlot) 
 {
     word_t offset = 3;
+    
     for (word_t i = 0; i < count; ++i) {
         cptr_t frameCptr = getSyscallArg(offset + 2 * i, buffer);
         vptr_t vaddr = getSyscallArg(offset + 2 * i + 1, buffer);
+        
         // do the mapping
+        pte_t pte = makeUserPagePTE(base, vmRights, cap_read, attributes, frameSize);
+        // TODO: below is a bit cursed.
+        lookupPTSlot_ret_t lu_ret = lookupPTSlot(vspaceRoot, vaddr);
+        if (unlikely(lu_ret.ptBitsLeft != pageBitsForSize(frameSize))) {
+            current_lookup_fault = lookup_fault_missing_capability_new(lu_ret.ptBitsLeft);
+            current_syscall_error.type = seL4_FailedLookup;
+            current_syscall_error.failedLookupWasSource = false;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+        bool_t tlbflush_required = pte_ptr_get_valid(ptSlot);
+        ctSlot->cap = cap;
+        (*lu_ret)->pt_slot = pte;
+        cleanByVA_PoU((vptr_t)&pte, pptr_to_paddr(&pte));
+
+        if (unlikely(tlbflush_required)) {
+            assert(asid < BIT(16));
+            invalidateTLBByASIDVA(asid, cap_frame_cap_get_capFMappedAddress(cap));
+        }
     }
 }
 
-static exception_t performVSpaceBatchedUnmap(asid_t asid, word_t count, word_t *buffer) 
+// problem: ctslot should be multiple of them...
+static exception_t performVSpaceBatchedUnmap(asid_t asid, word_t count, word_t *buffer, cte_t *ctSlot) 
 {
     word_t offset = 1;
     for (word_t i = 0; i < count; ++i) {
@@ -1554,7 +1577,7 @@ static exception_t decodeARMVSpaceRootInvocation(word_t invLabel, word_t length,
         if (invLabel == ARMVSpaceMapBatched) {
             seL4_CapRights_t rights = rightsFromWord(getSyscallArg(1, buffer));
             vm_attributes_t attributes = vmAttributesFromWord(getSyscallArg(2, buffer));
-            return performVSpaceBatchedMap(vspaceRoot, asid, rights, attributes, count, buffer);
+            return performVSpaceBatchedMap(vspaceRoot, asid, rights, attributes, count, buffer, slot);
         } else{
             return performVSpaceBatchedUnmap(asid, count, buffer);
         }
