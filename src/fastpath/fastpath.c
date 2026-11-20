@@ -550,6 +550,14 @@ void NORETURN fastpath_reply_recv(word_t cptr, word_t msgInfo)
 #endif
 }
 
+void NORETURN fastpath_map_reply_recv(word_t cptr, word_t msgInfo, word_t reply) {
+    // do the mapping first.
+    if (unlikely(!map_frame(cptr, msgInfo, reply))) {
+        slowpath(SysMapReplyRecv);
+    }
+    fastpath_reply_recv(cptr, msgInfo, reply);
+}
+
 #ifdef CONFIG_SIGNAL_FASTPATH
 #ifdef CONFIG_ARCH_ARM
 static inline

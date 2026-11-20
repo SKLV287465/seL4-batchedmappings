@@ -1857,6 +1857,12 @@ exception_t decodeARMMMUInvocation(word_t invLabel, word_t length, cptr_t cptr,
     }
 }
 
+// TODO: do the frame mapping in the kernel.
+// Will first create the interface.
+bool_t map_frame(void) {
+    return true;
+}
+
 #ifdef CONFIG_DEBUG_BUILD
 void kernelPrefetchAbort(word_t pc) VISIBLE;
 void kernelDataAbort(word_t pc) VISIBLE;

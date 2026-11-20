@@ -263,6 +263,43 @@ LIBSEL4_INLINE_FUNC seL4_MessageInfo_t seL4_ReplyRecv(seL4_CPtr src, seL4_Messag
     return info;
 }
 
+LIBSEL4_INLINE_FUNC seL4_MessageInfo_t seL4_ARM_Page_MapReplyRecv(seL4_ARM_Page frame, seL4_CPtr vspace,
+                                                                  seL4_Word vaddr, seL4_CapRights_t rights,
+                                                                  seL4_ARM_VMAttributes attr, seL4_CPtr src,
+                                                                  seL4_MessageInfo_t msgInfo, seL4_Word *sender,
+                                                                  seL4_CPtr reply)
+{
+    seL4_MessageInfo_t info;
+    seL4_Word badge;
+    seL4_Word msg0;
+    seL4_Word msg1;
+    seL4_Word msg2;
+    seL4_Word msg3;
+
+    /* Load beginning of the message into registers. */
+    msg0 = seL4_GetMR(0);
+    msg1 = seL4_GetMR(1);
+    msg2 = seL4_GetMR(2);
+    msg3 = seL4_GetMR(3);
+
+    // Note: so this calls the syscall?
+    arm_sys_map_reply_recv(seL4_SysMapReplyRecv, src, &badge, msgInfo.words[0], &info.words[0], &msg0, &msg1, &msg2, &msg3,
+                           LIBSEL4_MCS_REPLY);
+
+    /* Write the message back out to memory. */
+    seL4_SetMR(0, msg0);
+    seL4_SetMR(1, msg1);
+    seL4_SetMR(2, msg2);
+    seL4_SetMR(3, msg3);
+
+    /* Return back sender and message information. */
+    if (sender) {
+        *sender = badge;
+    }
+
+    return info;
+}
+
 #ifdef CONFIG_KERNEL_MCS
 LIBSEL4_INLINE_FUNC seL4_MessageInfo_t seL4_ReplyRecvWithMRs(seL4_CPtr src, seL4_MessageInfo_t msgInfo,
                                                              seL4_Word *sender,

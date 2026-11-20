@@ -174,6 +174,51 @@ static inline void arm_sys_send_recv(seL4_Word sys, seL4_Word dest, seL4_Word *o
     *in_out_mr3 = msg3;
 }
 
+static inline seL4_Word arm_sys_map_reply_recv(seL4_Word sys, seL4_Word src, seL4_Word *out_badge, seL4_Word info_arg,
+                                               seL4_Word *out_info, seL4_Word *in_out_mr0, seL4_Word *in_out_mr1,
+                                               seL4_Word *in_out_mr2, seL4_Word *in_out_mr3, seL4_Word reply,
+                                               seL4_Word frame, seL4_Word vspace, seL4_Word vaddr, seL4_Word rights,
+                                               seL4_Word attr)
+{
+    register seL4_Word src_and_badge asm("x0") = src;
+    register seL4_Word info asm("x1") = info_arg;
+
+    /* Load the beginning of the message info registers */
+    register seL4_Word msg0 asm("x2") = *in_out_mr0;
+    register seL4_Word msg1 asm("x3") = *in_out_mr1;
+    register seL4_Word msg2 asm("x4") = *in_out_mr2;
+    register seL4_Word msg3 asm("x5") = *in_out_mr3;
+
+    register seL4_Word reply_reg asm("x6") = reply;
+
+    /* The frame map */
+    register seL4_Word frame_reg asm("x8") = frame;
+    register seL4_Word vspace_reg asm("x9") = vspace;
+    register seL4_Word vaddr_reg asm("x10") = vaddr;
+    register seL4_Word rights_reg asm("x11") = rights;
+    register seL4_Word attr_reg asm("x12") = attr;
+
+    /* Perform the system call. */
+    register seL4_Word scno asm("x7") = sys;
+    asm volatile(
+        "svc #0"
+        : "+r"(msg0), "+r"(msg1), "+r"(msg2), "+r"(msg3),
+        "+r"(src_and_badge), "+r"(info), "+r"(status)
+        : "r"(scno), "r"(reply_reg), "r"(frame_reg), "r"(vspace_reg), "r"(vaddr_reg), "r"(rights_reg),
+        "r"(attr_reg)
+        : "memory"
+    );
+
+    *out_badge = src_and_badge;
+    *out_info = info;
+    *in_out_mr0 = msg0;
+    *in_out_mr1 = msg1;
+    *in_out_mr2 = msg2;
+    *in_out_mr3 = msg3;
+
+    return status;
+}
+
 #ifdef CONFIG_KERNEL_MCS
 static inline void arm_sys_nbsend_recv(seL4_Word sys, seL4_Word dest, seL4_Word src, seL4_Word *out_badge,
                                        seL4_Word info_arg,
