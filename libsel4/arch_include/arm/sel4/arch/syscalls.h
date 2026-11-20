@@ -818,3 +818,55 @@ LIBSEL4_INLINE_FUNC seL4_MessageInfo_t seL4_Poll(seL4_CPtr src, seL4_Word *sende
     return seL4_NBRecv(src, sender);
 #endif
 }
+
+// temporary constant definitions:
+#define seL4_MaxBatchedMap      ((seL4_MsgMaxLength - 3) / 2)
+#define seL4_MaxBatchedUnmap    (seL4_MsgMaxLength - 1)
+
+typedef struct seL4_ARM_BatchedMapping_ {
+    seL4_CPtr frame;
+    seL4_Word vaddr;
+} seL4_ARM_BatchedMapping;
+
+LIBSEL4_INLINE_FUNC seL4_Error seL4_ARM_VSpace_Map_Batched(seL4_ARM_VSpace _service,
+                                                           seL4_Word count,
+                                                           const seL4_ARM_BatchedMapping *mappings,
+                                                           seL4_CapRights_t rights,
+                                                           seL4_ARM_VMAttributes attr)
+{
+    if (count > seL4_MaxBatchedMap) {
+        return seL4_RangeError;
+    }
+
+    seL4_SetMR(0, count);
+    seL4_SetMR(1, rights.words[0]);
+    seL4_SetMR(2, attr);
+    for (seL4_Word i = 0; i < count; i++) {
+        seL4_SetMR(3 + 2 * i, mappings[i].frame);
+        seL4_SetMR(4 + 2 * i, mappings[i].vaddr);
+    }
+
+    seL4_MessageInfo_t tag = seL4_MessageInfo_new(ARMVSpaceMapBatched, 0, 0, 3 + 2 * count);
+    seL4_MessageInfo_t output_tag = seL4_Call(_service, tag);
+
+    return (seL4_Error) seL4_MessageInfo_get_label(output_tag);
+}
+
+LIBSEL4_INLINE_FUNC seL4_Error seL4_ARM_VSpace_Unmap_Batched(seL4_ARM_VSpace _service,
+                                                             seL4_Word count,
+                                                             const seL4_CPtr *frames)
+{
+    if (count > seL4_MaxBatchedUnmap) {
+        return seL4_RangeError;
+    }
+
+    seL4_SetMR(0, count);
+    for (seL4_Word i = 0; i < count; i++) {
+        seL4_SetMR(1 + i, frames[i]);
+    }
+
+    seL4_MessageInfo_t tag = seL4_MessageInfo_new(ARMVSpaceUnmapBatched, 0, 0, 1 + count);
+    seL4_MessageInfo_t output_tag = seL4_Call(_service, tag);
+
+    return (seL4_Error) seL4_MessageInfo_get_label(output_tag);
+}
