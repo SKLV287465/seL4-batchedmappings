@@ -449,6 +449,13 @@
             </error>
         </method>
     </interface>
+    <interface name="seL4_ARM_VSpace">
+    <!-- TODO: figure out later... read the tooling probably. read manual/README.md -->
+        <method id="ARMVSpaceMapBatched" name="Map_Batched" >
+        </method>
+        <method id="ARMVSpaceUnmap_Batched" name="Unmap_Batched" >
+        </method>
+    </interface>
     <interface name="seL4_ARM_ASIDControl" manual_name="ASID Control"
         cap_description="The master ASIDControl capability being operated on.">
         <method id="ARMASIDControlMakePool" name="MakePool" manual_name="Make Pool">
