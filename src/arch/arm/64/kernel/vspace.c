@@ -1251,6 +1251,10 @@ static void doFlush(word_t invLabel, vptr_t start, vptr_t end, paddr_t pstart)
 
 /* ================= INVOCATION HANDLING STARTS HERE ================== */
 
+static inline bool_t CONST checkVPAlignment(vm_page_size_t sz, word_t w)
+{
+    return (w & MASK(pageBitsForSize(sz))) == 0;
+}
 // TODO: this should not be a catastrophic error...
 // TODO: figure out how to do error checking, for now I will just assume Intermediate structures exist.
 static exception_t performVSpaceBatchedMap(vspace_root_t *vspaceRoot, asid_t asid,
@@ -1260,6 +1264,9 @@ static exception_t performVSpaceBatchedMap(vspace_root_t *vspaceRoot, asid_t asi
     word_t offset = 3;
     
     for (word_t i = 0; i < count; ++i) {
+        cptr_t frameCptr = getSyscallArg(offset + 2 * i, buffer);
+        vptr_t vaddr = getSyscallArg(offset + 2 * i + 1, buffer);
+        
         lookupSlot_raw_ret_t lu_ret = lookupSlot(NODE_STATE(ksCurThread), frameCptr);
         if (unlikely(lu_ret.status != EXCEPTION_NONE)) {
             return EXCEPTION_SYSCALL_ERROR;
@@ -1275,6 +1282,7 @@ static exception_t performVSpaceBatchedMap(vspace_root_t *vspaceRoot, asid_t asi
                                             rights);
 
         asid_t frame_asid = cap_frame_cap_get_capFMappedASID(frameCap);
+        lookupPTSlot_ret_t pt_ret = lookupPTSlot(vspaceRoot, vaddr);
         if (frame_asid != asidInvalid) {
             if (unlikely(frame_asid != asid)) {
                 return EXCEPTION_SYSCALL_ERROR;
@@ -1283,42 +1291,43 @@ static exception_t performVSpaceBatchedMap(vspace_root_t *vspaceRoot, asid_t asi
                 return EXCEPTION_SYSCALL_ERROR;
             }
         } else if (unlikely(vaddr + BIT(pageBitsForSize(frameSize)) - 1 > USER_TOP)) {
+            current_lookup_fault = lookup_fault_missing_capability_new(pt_ret.ptBitsLeft);
+            current_syscall_error.type = seL4_FailedLookup;
+            current_syscall_error.failedLookupWasSource = false;
             return EXCEPTION_SYSCALL_ERROR;
         }
         if (unlikely(!checkVPAlignment(frameSize, vaddr))) {
             return EXCEPTION_SYSCALL_ERROR;
         }
 
-        lookupPTSlot_ret_t pt_ret = lookupPTSlot(vspaceRoot, vaddr);
+        
         if (unlikely(pt_ret.ptBitsLeft != pageBitsForSize(frameSize))) {
             return EXCEPTION_SYSCALL_ERROR;
         }
 
+        frameCap = cap_frame_cap_set_capFMappedASID(frameCap, asid);
+        frameCap = cap_frame_cap_set_capFMappedAddress(frameCap, vaddr);
 
-        cptr_t frameCptr = getSyscallArg(offset + 2 * i, buffer);
-        vptr_t vaddr = getSyscallArg(offset + 2 * i + 1, buffer);
+        paddr_t base = pptr_to_paddr((void *)cap_frame_cap_get_capFBasePtr(frameCap));
         
         // do the mapping
+        bool_t cap_read = (vmRights == VMReadOnly || vmRights == VMReadWrite);
         pte_t pte = makeUserPagePTE(base, vmRights, cap_read, attributes, frameSize);
         // TODO: below is a bit cursed.
-        if (unlikely(pt_ret.ptBitsLeft != pageBitsForSize(frameSize))) {
-            current_lookup_fault = lookup_fault_missing_capability_new(pt_ret.ptBitsLeft);
-            current_syscall_error.type = seL4_FailedLookup;
-            current_syscall_error.failedLookupWasSource = false;
-            return EXCEPTION_SYSCALL_ERROR;
-        }
-        bool_t tlbflush_required = pte_ptr_get_valid(ptSlot);
-        ctSlot->cap = cap;
-        pt_ret.pt_slot = pte;
-        cleanByVA_PoU((vptr_t)&pte, pptr_to_paddr(&pte));
+        bool_t tlbflush_required = pte_ptr_get_valid(pt_ret.ptSlot);
+        frameSlot->cap = frameCap;
+        *pt_ret.ptSlot = pte;
+        // TODO: better to clean all at once??? gotta check this as well.
+        cleanByVA_PoU((vptr_t)pt_ret.ptSlot, pptr_to_paddr(pt_ret.ptSlot));
 
         // This might be better to do in one big flush, but I either need better intuition from someone or benchmarking... I suspect
         // line by line is better since the max number of mappings is small.
         if (unlikely(tlbflush_required)) {
             assert(asid < BIT(16));
-            invalidateTLBByASIDVA(asid, cap_frame_cap_get_capFMappedAddress(cap));
+            invalidateTLBByASIDVA(asid, cap_frame_cap_get_capFMappedAddress(frameCap));
         }
     }
+    return EXCEPTION_NONE;
 }
 
 // problem: ctslot should be multiple of them...
@@ -1356,8 +1365,8 @@ static exception_t performVSpaceBatchedUnmap(asid_t asid, word_t count, word_t *
         slotCap = cap_frame_cap_set_capFMappedAddress(slotCap, 0);
         slotCap = cap_frame_cap_set_capFMappedASID(slotCap, asidInvalid);
         frameSlot->cap = slotCap;
-        return EXCEPTION_NONE;
     }
+    return EXCEPTION_NONE;
 }
 
 static exception_t performVSpaceFlush(word_t invLabel, vspace_root_t *vspaceRoot, asid_t asid,
@@ -1524,6 +1533,12 @@ static exception_t decodeARMVSpaceRootInvocation(word_t invLabel, word_t length,
     lookupPTSlot_ret_t resolve_ret;
     findVSpaceForASID_ret_t find_ret;
     pte_t pte;
+    word_t entry_size;
+    word_t header;
+    exception_t result;
+    word_t count;
+    seL4_CapRights_t rights;
+    vm_attributes_t attributes;
 
     switch (invLabel) {
     case ARMVSpaceClean_Data:
@@ -1635,9 +1650,11 @@ static exception_t decodeARMVSpaceRootInvocation(word_t invLabel, word_t length,
     case ARMVSpaceUnmapBatched:
         // TODO: do some exception handling.
         // TODO: do error message i.e. current_syscall_error.type = seL4_IllegalOperation;
-        word_t entry_size = 1;
+        entry_size = 1;
+        header = 1;
         if (invLabel == ARMVSpaceMapBatched) {
             entry_size = 2;
+            header = 3;
         }
 
         if (unlikely(length < header)) {
@@ -1647,8 +1664,8 @@ static exception_t decodeARMVSpaceRootInvocation(word_t invLabel, word_t length,
             return EXCEPTION_SYSCALL_ERROR;
         }
 
-        word_t count = getSyscallArg(0, buffer);
-        if (unlikely(count > (length - header) / words)) {
+        count = getSyscallArg(0, buffer);
+        if (unlikely(count > (length - header) / entry_size)) {
             return EXCEPTION_SYSCALL_ERROR;
         }
         
@@ -1663,13 +1680,19 @@ static exception_t decodeARMVSpaceRootInvocation(word_t invLabel, word_t length,
             return EXCEPTION_SYSCALL_ERROR;
         }
         
+        
+
         if (invLabel == ARMVSpaceMapBatched) {
-            seL4_CapRights_t rights = rightsFromWord(getSyscallArg(1, buffer));
-            vm_attributes_t attributes = vmAttributesFromWord(getSyscallArg(2, buffer));
-            return performVSpaceBatchedMap(vspaceRoot, asid, rights, attributes, count, buffer);
+            rights = rightsFromWord(getSyscallArg(1, buffer));
+            attributes = vmAttributesFromWord(getSyscallArg(2, buffer));
+            result = performVSpaceBatchedMap(vspaceRoot, asid, rights, attributes, count, buffer);
         } else{
-            return performVSpaceBatchedUnmap(asid, count, buffer);
+            result = performVSpaceBatchedUnmap(asid, count, buffer);
         }
+
+        // need to handle errrors.
+        setThreadState(NODE_STATE(ksCurThread), ThreadState_Restart);
+        return result;
     
     default:
         current_syscall_error.type = seL4_IllegalOperation;
@@ -1761,11 +1784,6 @@ static exception_t decodeARMPageTableInvocation(word_t invLabel, word_t length,
 
     setThreadState(NODE_STATE(ksCurThread), ThreadState_Restart);
     return performPageTableInvocationMap(cap, cte, pte, ptSlot.ptSlot);
-}
-
-static inline bool_t CONST checkVPAlignment(vm_page_size_t sz, word_t w)
-{
-    return (w & MASK(pageBitsForSize(sz))) == 0;
 }
 
 static exception_t decodeARMFrameInvocation(word_t invLabel, word_t length,

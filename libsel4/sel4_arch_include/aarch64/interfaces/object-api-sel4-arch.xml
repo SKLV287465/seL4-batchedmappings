@@ -224,6 +224,12 @@
                 </description>
             </error>
         </method>
+            <!--  figure out later... -->
+        <!-- TODO: figure out later... read the tooling probably. read manual/README.md -->
+        <method id="ARMVSpaceMapBatched" name="MapBatched" >
+        </method>
+        <method id="ARMVSpaceUnmapBatched" name="UnmapBatched" >
+        </method>
     </interface>
     <interface name="seL4_ARM_SMC" manual_name="SMC" cap_description="Capability to allow threads to make Secure Monitor Calls.">
         <method id="ARMSMCCall" name="Call" manual_name="SMC Call" manual_label="smc_call">
