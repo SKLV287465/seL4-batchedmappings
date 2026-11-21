@@ -1206,8 +1206,7 @@ static exception_t performVSpaceBatchedMap(vspace_root_t *vspaceRoot, asid_t asi
         paddr_t base = pptr_to_paddr((void *)cap_frame_cap_get_capFBasePtr(frameCap));
         
         // do the mapping
-        bool_t cap_read = (vmRights == VMReadOnly || vmRights == VMReadWrite);
-        pte_t pte = makeUserPagePTE(base, vmRights, cap_read, attributes, frameSize);
+        pte_t pte = makeUserPagePTE(base, vmRights, attributes, frameSize);
         // TODO: below is a bit cursed.
         bool_t tlbflush_required = pte_ptr_get_valid(pt_ret.ptSlot);
         frameSlot->cap = frameCap;
