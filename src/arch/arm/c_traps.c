@@ -192,7 +192,7 @@ void VISIBLE c_handle_fastpath_reply_recv(word_t cptr, word_t msgInfo)
     UNREACHABLE();
 }
 
-c_handle_fastpath_map_reply_recv(word_t cptr, word_t msgInfo, word_t reply)
+void VISIBLE c_handle_fastpath_map_reply_recv(word_t cptr, word_t msgInfo, word_t reply)
 {
     NODE_LOCK_SYS;
 

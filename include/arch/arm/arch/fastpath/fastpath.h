@@ -42,4 +42,7 @@ void fastpath_reply_recv(word_t cptr, word_t r_msgInfo)
 #endif
 NORETURN;
 
-
+#ifdef CONFIG_KERNEL_MCS
+void fastpath_map_reply_recv(word_t cptr, word_t r_msgInfo, word_t reply)
+NORETURN;
+#endif

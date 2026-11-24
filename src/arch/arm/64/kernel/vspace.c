@@ -26,6 +26,7 @@
 #include <arch/object/iospace.h>
 #include <arch/object/vcpu.h>
 #include <arch/machine/tlb.h>
+#include <fastpath/fastpath.h>
 
 /*
  * Memory types are defined in Memory Attribute Indirection Register.
@@ -1859,7 +1860,7 @@ exception_t decodeARMMMUInvocation(word_t invLabel, word_t length, cptr_t cptr,
 
 // TODO: do the frame mapping in the kernel.
 // Will first create the interface.
-bool_t fastpath_map_frame() {
+bool_t fastpath_map_frame(void) {
     // skip parts of the decode.
     tcb_t *thread = NODE_STATE(ksCurThread);
     cap_t cnode_cap = TCB_PTR_CTE_PTR(thread, tcbCTable)->cap;

@@ -283,8 +283,8 @@ LIBSEL4_INLINE_FUNC seL4_MessageInfo_t seL4_ARM_Page_MapReplyRecv(seL4_ARM_Page 
     msg3 = seL4_GetMR(3);
 
     // Note: so this calls the syscall?
-    arm_sys_map_reply_recv(seL4_SysMapReplyRecv, src, &badge, msgInfo.words[0], &info.words[0], &msg0, &msg1, &msg2, &msg3,
-                           LIBSEL4_MCS_REPLY);
+    arm_sys_map_reply_recv(seL4_SysMapReplyRecv, src, &badge, msgInfo.words[0], &info.words[0],
+                           &msg0, &msg1, &msg2, &msg3, reply, frame, vspace, vaddr, rights.words[0], attr);
 
     /* Write the message back out to memory. */
     seL4_SetMR(0, msg0);

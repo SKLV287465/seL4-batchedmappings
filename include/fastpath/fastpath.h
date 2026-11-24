@@ -147,7 +147,7 @@ static inline cte_t *FORCE_INLINE lookup_slot(cap_t cap, cptr_t cptr)
     return unlikely(bits > wordBits) ? NULL : slot;
 }
 
-bool_t fastpath_map_frame();
+bool_t fastpath_map_frame(void);
 
 /* make sure the fastpath functions conform with structure_*.bf */
 static inline void thread_state_ptr_set_tsType_np(thread_state_t *ts_ptr, word_t tsType)

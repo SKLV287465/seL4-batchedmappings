@@ -174,7 +174,7 @@ static inline void arm_sys_send_recv(seL4_Word sys, seL4_Word dest, seL4_Word *o
     *in_out_mr3 = msg3;
 }
 
-static inline seL4_Word arm_sys_map_reply_recv(seL4_Word sys, seL4_Word src, seL4_Word *out_badge, seL4_Word info_arg,
+static inline void arm_sys_map_reply_recv(seL4_Word sys, seL4_Word src, seL4_Word *out_badge, seL4_Word info_arg,
                                                seL4_Word *out_info, seL4_Word *in_out_mr0, seL4_Word *in_out_mr1,
                                                seL4_Word *in_out_mr2, seL4_Word *in_out_mr3, seL4_Word reply,
                                                seL4_Word frame, seL4_Word vspace, seL4_Word vaddr, seL4_Word rights,
@@ -203,7 +203,7 @@ static inline seL4_Word arm_sys_map_reply_recv(seL4_Word sys, seL4_Word src, seL
     asm volatile(
         "svc #0"
         : "+r"(msg0), "+r"(msg1), "+r"(msg2), "+r"(msg3),
-        "+r"(src_and_badge), "+r"(info), "+r"(status)
+        "+r"(src_and_badge), "+r"(info)
         : "r"(scno), "r"(reply_reg), "r"(frame_reg), "r"(vspace_reg), "r"(vaddr_reg), "r"(rights_reg),
         "r"(attr_reg)
         : "memory"
@@ -215,8 +215,6 @@ static inline seL4_Word arm_sys_map_reply_recv(seL4_Word sys, seL4_Word src, seL
     *in_out_mr1 = msg1;
     *in_out_mr2 = msg2;
     *in_out_mr3 = msg3;
-
-    return status;
 }
 
 #ifdef CONFIG_KERNEL_MCS
