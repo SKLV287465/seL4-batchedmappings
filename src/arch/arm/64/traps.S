@@ -233,6 +233,9 @@ lel_syscall:
     mov     x2, x6
 #endif
     b.eq    c_handle_fastpath_reply_recv
+
+    cmp     x7, #SYSCALL_MAP_REPLY_RECV /* this seems to be defined by the xml. */
+    b.eq c_handle_fastpath_map_reply_recv
 #endif
 
     mov     x2, x7

@@ -1859,8 +1859,71 @@ exception_t decodeARMMMUInvocation(word_t invLabel, word_t length, cptr_t cptr,
 
 // TODO: do the frame mapping in the kernel.
 // Will first create the interface.
-bool_t map_frame(void) {
-    return true;
+bool_t fastpath_map_frame() {
+    // skip parts of the decode.
+    tcb_t *thread = NODE_STATE(ksCurThread);
+    cap_t cnode_cap = TCB_PTR_CTE_PTR(thread, tcbCTable)->cap;
+
+    /* the five args the stub left in x8..x12 */
+    cptr_t frame_cptr  = getRegister(thread, X8);
+    cptr_t vspace_cptr = getRegister(thread, X9);
+    vptr_t vaddr       = getRegister(thread, X10);
+    seL4_CapRights_t rights   = rightsFromWord(getRegister(thread, X11));
+    vm_attributes_t  attributes = vmAttributesFromWord(getRegister(thread, X12));
+
+    /* ctSlot + cap */
+    cte_t *ctSlot = lookup_slot(cnode_cap, frame_cptr);
+    if (unlikely(ctSlot == NULL)) {
+        return false;
+    }
+    cap_t cap = ctSlot->cap;
+    if (unlikely(!cap_capType_equals(cap, cap_frame_cap))) {
+        return false;
+    }
+
+    /* asid + vspace root (replaces the extra-cap lookup) */
+    cap_t vspaceRootCap = lookup_fp(cnode_cap, vspace_cptr);
+    if (unlikely(!isValidNativeRoot(vspaceRootCap))) {
+        return false;
+    }
+    vspace_root_t *vspaceRoot = VSPACE_PTR(cap_vspace_cap_get_capVSBasePtr(vspaceRootCap));
+    asid_t asid = cap_vspace_cap_get_capVSMappedASID(vspaceRootCap);
+    findVSpaceForASID_ret_t find_ret = findVSpaceForASID(asid);
+    if (unlikely(find_ret.status != EXCEPTION_NONE || find_ret.vspace_root != vspaceRoot)) {
+        return false;
+    }
+
+    vm_page_size_t frameSize = cap_frame_cap_get_capFSize(cap);
+    if (unlikely(!checkVPAlignment(frameSize, vaddr))) {
+        return false;
+    }
+
+    /* remap must target the same asid and vaddr; fresh map must fit under USER_TOP */
+    asid_t frame_asid = cap_frame_cap_get_capFMappedASID(cap);
+    if (frame_asid != asidInvalid) {
+        if (unlikely(frame_asid != asid ||
+                     cap_frame_cap_get_capFMappedAddress(cap) != vaddr)) {
+            return false;
+        }
+    } else if (unlikely(vaddr + BIT(pageBitsForSize(frameSize)) - 1 > USER_TOP)) {
+        return false;
+    }
+
+    /* pte */
+    vm_rights_t vmRights = maskVMRights(cap_frame_cap_get_capFVMRights(cap), rights);
+    paddr_t base = pptr_to_paddr((void *)cap_frame_cap_get_capFBasePtr(cap));
+    pte_t pte = makeUserPagePTE(base, vmRights, attributes, frameSize);
+
+    /* ptSlot */
+    lookupPTSlot_ret_t lu_ret = lookupPTSlot(vspaceRoot, vaddr);
+    if (unlikely(lu_ret.ptBitsLeft != pageBitsForSize(frameSize))) {
+        return false;   /* intermediate PT missing — the pager must map one first */
+    }
+
+    cap = cap_frame_cap_set_capFMappedASID(cap, asid);
+    cap = cap_frame_cap_set_capFMappedAddress(cap, vaddr);
+
+    return !performPageInvocationMap(asid, cap, ctSlot, pte, lu_ret.ptSlot);
 }
 
 #ifdef CONFIG_DEBUG_BUILD

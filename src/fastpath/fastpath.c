@@ -551,9 +551,12 @@ void NORETURN fastpath_reply_recv(word_t cptr, word_t msgInfo)
 }
 
 void NORETURN fastpath_map_reply_recv(word_t cptr, word_t msgInfo, word_t reply) {
-    // do the mapping first.
-    if (unlikely(!map_frame(cptr, msgInfo, reply))) {
-        slowpath(SysMapReplyRecv);
+    // do the mapping first. maybe i can reoute the decode arm pageinvocation thing...
+    if (unlikely(!fastpath_map_frame())) {
+        // don't bother with the slowpath, just return to userland with the error.
+        // do stuff to return to userland with error.
+        // TODO: return to userland with error.
+        slowpath(42); // just fail idk
     }
     fastpath_reply_recv(cptr, msgInfo, reply);
 }

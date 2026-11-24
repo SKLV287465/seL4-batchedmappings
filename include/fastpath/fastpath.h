@@ -106,6 +106,49 @@ static inline cap_t FORCE_INLINE lookup_fp(cap_t cap, cptr_t cptr)
 
     return cap;
 }
+
+/* Fastpath slot lookup.  Returns a null_cap on failure. */
+static inline cte_t *FORCE_INLINE lookup_slot(cap_t cap, cptr_t cptr)
+{
+    word_t cptr2;
+    cte_t *slot;
+    word_t guardBits, radixBits, bits;
+    word_t radix, capGuard;
+
+    bits = 0;
+
+    if (unlikely(! cap_capType_equals(cap, cap_cnode_cap))) {
+        return NULL;
+    }
+
+    do {
+        guardBits = cap_cnode_cap_get_capCNodeGuardSize(cap);
+        radixBits = cap_cnode_cap_get_capCNodeRadix(cap);
+        cptr2 = cptr << bits;
+
+        capGuard = cap_cnode_cap_get_capCNodeGuard(cap);
+
+        /* Check the guard. Depth mismatch check is deferred.
+           The 32MinusGuardSize encoding contains an exception
+           when the guard is 0, when 32MinusGuardSize will be
+           reported as 0 also. In this case we skip the check */
+        if (likely(guardBits) && unlikely(cptr2 >> (wordBits - guardBits) != capGuard)) {
+            return NULL;
+        }
+
+        radix = cptr2 << guardBits >> (wordBits - radixBits);
+        slot = CTE_PTR(cap_cnode_cap_get_capCNodePtr(cap)) + radix;
+
+        cap = slot->cap;
+        bits += guardBits + radixBits;
+
+    } while (unlikely(bits < wordBits && cap_capType_equals(cap, cap_cnode_cap)));
+
+    return unlikely(bits > wordBits) ? NULL : slot;
+}
+
+bool_t fastpath_map_frame();
+
 /* make sure the fastpath functions conform with structure_*.bf */
 static inline void thread_state_ptr_set_tsType_np(thread_state_t *ts_ptr, word_t tsType)
 {

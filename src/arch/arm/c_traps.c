@@ -192,6 +192,20 @@ void VISIBLE c_handle_fastpath_reply_recv(word_t cptr, word_t msgInfo)
     UNREACHABLE();
 }
 
+c_handle_fastpath_map_reply_recv(word_t cptr, word_t msgInfo, word_t reply)
+{
+    NODE_LOCK_SYS;
+
+    c_entry_hook();
+#ifdef TRACK_KERNEL_ENTRIES
+    benchmark_debug_syscall_start(cptr, msgInfo, SysMapReplyRecv);
+    ksKernelEntry.is_fastpath = 1;  
+#endif /* DEBUG */
+
+    fastpath_map_reply_recv(cptr, msgInfo, reply);
+    UNREACHABLE();
+}
+
 #endif
 
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT

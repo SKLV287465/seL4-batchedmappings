@@ -33,12 +33,19 @@ void c_handle_fastpath_signal(word_t cptr, word_t msgInfo)
 VISIBLE SECTION(".vectors.text");
 
 #ifdef CONFIG_KERNEL_MCS
+void c_handle_fastpath_map_reply_recv(word_t cptr, word_t msgInfo, word_t reply)
+VISIBLE SECTION(".vectors.text");
+#endif
+
+#ifdef CONFIG_KERNEL_MCS
 void c_handle_fastpath_reply_recv(word_t cptr, word_t msgInfo, word_t reply)
 #else
 void c_handle_fastpath_reply_recv(word_t cptr, word_t msgInfo)
 #endif
 VISIBLE SECTION(".vectors.text");
 #endif
+
+
 
 void c_handle_interrupt(void)
 VISIBLE SECTION(".vectors.text");
